@@ -2,8 +2,10 @@ package pl.aetas.kollage.creator
 
 import org.slf4j.Logger
 import org.slf4j.LoggerFactory
+import java.awt.Color
 import java.awt.image.BufferedImage
 import java.io.File
+import java.util.*
 import javax.imageio.ImageIO
 
 data class Size(val width: Int, val height: Int) {
@@ -28,11 +30,15 @@ data class Position(val x: Int, val y: Int)
 
 class Canvas(columnsNumber: Int, size: Size) {
 
-    private val CHOOSE_TWO_COLUMNS_PROBABILITY = 0.1;
-    private val SMALL_DIFF_PX = 0;
-
+    private val CHOOSE_TWO_COLUMNS_PROBABILITY = 0.3;
+    private val SMALL_DIFF_PX = 15;
 
     private val columns: Array<Column> = Array(columnsNumber, { Column(size.width / columnsNumber) })
+
+    val logger: Logger = LoggerFactory.getLogger(Canvas::class.java)
+    init {
+        logger.debug("column width: ${size.width / columnsNumber}")
+    }
 
     fun addImage(image: Image) {
         val shortestColumn = shortestColumn()
@@ -49,19 +55,19 @@ class Canvas(columnsNumber: Int, size: Size) {
         } else if (similarWithPlusOne && joinColumnsByProbability()) {
             alignColumns(shortestColumnIndex, shortestColumnIndex+1)
             val neighbourColumn = columns[shortestColumnIndex + 1]
-            insertIntoBothColumns(image, neighbourColumn, shortestColumn)
+            insertIntoBothColumns(image, shortestColumn, neighbourColumn)
         } else {
             shortestColumn.fit(Wrapper(image))
         }
     }
 
-    private fun insertIntoBothColumns(image: Image, neighbourColumn: Column, shortestColumn: Column) {
+    private fun insertIntoBothColumns(image: Image, leftColumn: Column, rightColumn: Column) {
         val realWrapper = Wrapper(image)
         val linkedWrapper = Wrapper(realWrapper.size())
         linkedWrapper.linkedWrapper = realWrapper
         realWrapper.linkedWrapper = linkedWrapper
-        shortestColumn.fitIntoMultiple(realWrapper, 2)
-        neighbourColumn.fitIntoMultiple(linkedWrapper, 2)
+        leftColumn.fitIntoMultiple(realWrapper, 2)
+        rightColumn.fitIntoMultiple(linkedWrapper, 2)
     }
 
     private fun shortestColumn(): Column = columns.minBy { it.length() }!!
@@ -82,8 +88,9 @@ class Canvas(columnsNumber: Int, size: Size) {
         val diffInPx = longerColumn.length() - shorterColumn.length()
 
         if (diffInPx != 0) {
+            logger.debug("aligning diff: $diffInPx px")
             val lastInColumn = longerColumn.content.last()
-            lastInColumn.resize(lastInColumn.size().width, lastInColumn.size().height-diffInPx)
+            lastInColumn.crop(lastInColumn.size().width, lastInColumn.size().height-diffInPx)
         }
     }
 
@@ -116,6 +123,9 @@ class Canvas(columnsNumber: Int, size: Size) {
 class Column(val width: Int) {
     val content: MutableList<Wrapper> = arrayListOf()
 
+    val logger: Logger = LoggerFactory.getLogger(Column::class.java)
+
+
     fun fit(image: Wrapper) {
         image.resize(width, image.size().height)
         content.add(image)
@@ -125,7 +135,7 @@ class Column(val width: Int) {
         image.resize(width*columnsNumber, image.size().height)
         content.add(image)
     }
-    fun length() = content.sumBy { it.size().width }
+    fun length() = content.sumBy { it.size().height }
 }
 
 class Wrapper(private var size: Size) {
@@ -157,6 +167,12 @@ class Wrapper(private var size: Size) {
 
     fun resize(targetWidth: Int, targetHeight: Int) {
         actionsToApply.add(Resize(targetWidth, targetHeight))
+        linkedWrapper?.actionsToApply?.add(Resize(targetWidth, targetHeight))
+    }
+
+    fun crop(targetWidth: Int, targetHeight: Int) {
+        actionsToApply.add(Crop(targetWidth, targetHeight))
+        linkedWrapper?.actionsToApply?.add(Crop(targetWidth, targetHeight))
     }
 }
 
@@ -165,13 +181,13 @@ interface ImageAction {
     fun apply(wrapper: Wrapper)
 }
 
-class Crop(x: Int, y: Int, width: Int, height: Int): ImageAction {
+class Crop(val targetWidth: Int, val targetHeight: Int): ImageAction {
     override fun simulate(currentSize: Size): Wrapper {
-        TODO()
+        return Wrapper(Size(targetWidth, targetHeight))
     }
 
     override fun apply(wrapper: Wrapper) {
-        throw UnsupportedOperationException()
+        wrapper.image!!.crop(targetWidth, targetHeight)
     }
 }
 
@@ -188,15 +204,27 @@ class Resize(val targetWidth: Int, val targetHeight: Int): ImageAction {
 }
 
 fun main(args: Array<String>) {
+    val logger: Logger = LoggerFactory.getLogger("MAIN")
 
-    val images: Collection<Image> = (1..365).map { MockImage(Size(15*11, 10*11)) }
-    val canvasSize: Size = Size(70*11, 100*11)
+
+    val horizontalImages: Collection<Image> = (1..315).map { MockImage(Size(15*18, 10*18), null, "HORIZONTAL") }
+    logger.debug("horizontal image size: ${15*18} x ${10*18}")
+
+    val verticalImages: Collection<Image> = (1..50).map {MockImage(Size(10*18, 15*18), Color(255,255,255), "VERTICAL")}
+    logger.debug("vertical image size: ${10*18} x ${15*18}")
+
+    val allImages = horizontalImages + verticalImages
+    Collections.shuffle(allImages)
+
+    val canvasSize: Size = Size(70*13, 100*13)
 
     val canvasCreator = CanvasFactory()
-    val canvas = canvasCreator.create(images, canvasSize)
+    val canvas = canvasCreator.create(allImages, canvasSize)
 
-    images.forEach { canvas.addImage(it) }
+    allImages.forEach { canvas.addImage(it) }
     canvas.alignBottom()
+
+    val uniqueSizes: MutableSet<Size> = hashSetOf() // log only
 
     val imagesWithPosition: List<Pair<Wrapper, Position>> = canvas.getImagesWithPosition()
     val collageImage = BufferedImage(canvasSize.width, canvasSize.height, BufferedImage.TYPE_INT_RGB)
@@ -204,8 +232,11 @@ fun main(args: Array<String>) {
     imagesWithPosition.forEach {
         val (wrapper, position) = it
         wrapper.applyActions()
+        uniqueSizes.add(Size(wrapper.image!!.image.width, wrapper.image!!.image.height)) // log only
         graphics.drawImage(wrapper.image?.image, position.x, position.y, null)
     }
+
+    logger.debug("UniqueSizes: $uniqueSizes")
 
     ImageIO.write(collageImage, "jpg", File("result.png"));
 
