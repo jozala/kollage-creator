@@ -8,6 +8,9 @@ import java.io.File
 import java.util.*
 import javax.imageio.ImageIO
 
+val CHOOSE_TWO_COLUMNS_PROBABILITY = 0.2;
+val SMALL_DIFF_PX = 10;
+
 data class Size(val width: Int, val height: Int) {
     fun area(): Double = width.toDouble() * height
     fun resize(targetMaxWidth: Int, targetMaxHeight: Int): Size {
@@ -28,10 +31,8 @@ data class Size(val width: Int, val height: Int) {
 
 data class Position(val x: Int, val y: Int)
 
-class Canvas(columnsNumber: Int, size: Size) {
+class Canvas(columnsNumber: Int, val size: Size) {
 
-    private val CHOOSE_TWO_COLUMNS_PROBABILITY = 0.3;
-    private val SMALL_DIFF_PX = 15;
 
     private val columns: Array<Column> = Array(columnsNumber, { Column(size.width / columnsNumber) })
 
@@ -70,22 +71,22 @@ class Canvas(columnsNumber: Int, size: Size) {
         rightColumn.fitIntoMultiple(linkedWrapper, 2)
     }
 
-    private fun shortestColumn(): Column = columns.minBy { it.length() }!!
+    private fun shortestColumn(): Column = columns.minBy { it.height() }!!
 
     private fun areNeighbouringColumnsSimilarHeight(col1Index: Int, col2Index: Int): Boolean {
 
         if (col1Index < 0 || col2Index < 0) return false;
         if (col1Index > columns.size-1 || col2Index > columns.size-1) return false;
 
-        val diff = Math.abs(columns[col1Index].length() - columns[col2Index].length())
+        val diff = Math.abs(columns[col1Index].height() - columns[col2Index].height())
         return diff <= SMALL_DIFF_PX
     }
 
     private fun alignColumns(col1Index: Int, col2Index: Int) {
 
-        val shorterColumn = listOf(columns[col1Index], columns[col2Index]).minBy { it.length() }!!
-        val longerColumn = listOf(columns[col1Index], columns[col2Index]).maxBy { it.length() }!!
-        val diffInPx = longerColumn.length() - shorterColumn.length()
+        val shorterColumn = listOf(columns[col1Index], columns[col2Index]).minBy { it.height() }!!
+        val longerColumn = listOf(columns[col1Index], columns[col2Index]).maxBy { it.height() }!!
+        val diffInPx = longerColumn.height() - shorterColumn.height()
 
         if (diffInPx != 0) {
             logger.debug("aligning diff: $diffInPx px")
@@ -114,7 +115,34 @@ class Canvas(columnsNumber: Int, size: Size) {
     }
 
     fun alignBottom() {
-        println("NOT done yet, because of the lazy dev.")
+        logger.debug("Shortest column length is ${shortestColumn().height()} and canvas is ${size.height}")
+
+        val finalHeight = size.height
+        val sortedColumns = columns.sortedBy { it.height() }
+
+        sortedColumns.forEach { column ->
+            val overallDiff = column.height() - finalHeight
+            val averageDiff = overallDiff / column.content.filter { !it.locked }.size
+            val leftoverDiff = overallDiff % column.content.filter { !it.locked }.size
+
+            if(averageDiff > 0) {
+                column.content.forEach { image: Wrapper ->
+                    val imageSize = image.size()
+                    image.crop(imageSize.width, imageSize.height - averageDiff)
+                }
+            }
+
+            val highestImage = column.content.filter { it.linkedWrapper == null }.maxBy { it.size().height }!!
+
+            val highestImageSize = highestImage.size()
+            highestImage.crop(highestImageSize.width, highestImageSize.height - leftoverDiff)
+
+            column.content.forEach { it.lock() }
+
+            logger.debug("column aligned to height ${column.height()}")
+
+        }
+
     }
 
 
@@ -135,14 +163,17 @@ class Column(val width: Int) {
         image.resize(width*columnsNumber, image.size().height)
         content.add(image)
     }
-    fun length() = content.sumBy { it.size().height }
+    fun height() = content.sumBy { it.size().height }
 }
 
 class Wrapper(private var size: Size) {
 
+    val logger: Logger = LoggerFactory.getLogger(Wrapper::class.java)
+
     var image: Image? = null
     var linkedWrapper: Wrapper? = null
     private val actionsToApply: MutableList<ImageAction> = arrayListOf()
+    var locked = false
 
     constructor(image: Image) : this(image.size) {
         this.image = image
@@ -166,13 +197,26 @@ class Wrapper(private var size: Size) {
     }
 
     fun resize(targetWidth: Int, targetHeight: Int) {
+        if (locked) {
+            logger.debug("This wrapper will not be resized as it is locked")
+            return
+        }
         actionsToApply.add(Resize(targetWidth, targetHeight))
         linkedWrapper?.actionsToApply?.add(Resize(targetWidth, targetHeight))
     }
 
     fun crop(targetWidth: Int, targetHeight: Int) {
+        if (locked) {
+            logger.debug("This wrapper will not be cropped as it is locked")
+            return
+        }
         actionsToApply.add(Crop(targetWidth, targetHeight))
         linkedWrapper?.actionsToApply?.add(Crop(targetWidth, targetHeight))
+    }
+
+    fun lock() {
+        locked = true
+        linkedWrapper?.locked = true
     }
 }
 
@@ -248,13 +292,15 @@ class CanvasFactory {
 
     fun create(images: Collection<Image>, canvasSize: Size): Canvas {
         val canvasArea = canvasSize.area()
-        val averageExpectedImageArea = canvasArea / images.size
-        val averageExpectedImageWidth = Math.sqrt(3.0 / 2 * averageExpectedImageArea.toDouble())
+        val averageExpectedNormalImageArea = canvasArea / images.size
+        val averageExpectedImaginatedImageArea = averageExpectedNormalImageArea * (1.0 - 0.3) // stupid way to have almost right height of columns
+        val averageExpectedImageWidth = Math.sqrt(3.0 / 2 * averageExpectedImaginatedImageArea.toDouble())
         val averageExpectedImageHeight = averageExpectedImageWidth * 2.0 / 3
-        val columnsNumber = Math.floor(canvasSize.width / averageExpectedImageWidth).toInt()
+        val columnsNumber = Math.ceil(canvasSize.width / averageExpectedImageWidth).toInt()
 
+        logger.debug("Canvas size: $canvasSize")
         logger.debug("Canvas area: $canvasArea")
-        logger.debug("averageExpectedImageArea: $averageExpectedImageArea")
+        logger.debug("averageExpectedNormalImageArea: $averageExpectedNormalImageArea")
         logger.debug("averageExpectedImageWidth: $averageExpectedImageWidth")
         logger.debug("averageExpectedImageHeight: $averageExpectedImageHeight")
         logger.debug("columnsNumber: $columnsNumber")

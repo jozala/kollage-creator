@@ -1,8 +1,6 @@
 package pl.aetas.kollage.creator
 
 import org.imgscalr.Scalr
-import org.slf4j.Logger
-import org.slf4j.LoggerFactory
 import java.awt.Color
 import java.awt.image.BufferedImage
 
@@ -21,14 +19,10 @@ interface Image {
     }
 
     fun crop(targetWidth: Int, targetHeight: Int) {
-        val logger: Logger = LoggerFactory.getLogger(Image::class.java)
-        logger.debug("Cropping image to: ${targetWidth}x${targetHeight}")
-        logger.debug("image size before cropping: ${image.width}x${image.height}")
         val newImage = Scalr.crop(image, targetWidth, targetHeight)
         image.flush()
         size = Size(targetWidth, targetHeight)
         image = newImage
-        logger.debug("image size after cropping: ${image.width}x${image.height}")
     }
 }
 
