@@ -8,7 +8,10 @@ import java.io.File
 import java.nio.file.Files
 import java.nio.file.Paths
 import java.util.*
+import javax.imageio.IIOImage
 import javax.imageio.ImageIO
+import javax.imageio.ImageTypeSpecifier
+import javax.imageio.metadata.IIOMetadataNode
 
 val CHOOSE_TWO_COLUMNS_PROBABILITY = 0.2;
 val SMALL_DIFF_PX = 10;
@@ -432,7 +435,7 @@ fun main(args: Array<String>) {
 //    val allImages = horizontalImages + verticalImages
     Collections.shuffle(allImages)
 
-    val canvasSize: Size = Size(70*50, 100*50)
+    val canvasSize: Size = Size(30000, 44000)
 
     val canvasCreator = CanvasFactory()
     val canvas = canvasCreator.create(allImages, canvasSize)
@@ -456,8 +459,23 @@ fun main(args: Array<String>) {
 
     logger.debug("UniqueSizes: $uniqueSizes")
 
-    ImageIO.write(collageImage, "jpg", File("result.png"));
+//    ImageIO.write(collageImage, "jpg", File("result.png"));
 
+    val writer = ImageIO.getImageWritersByFormatName("jpeg").next()
+    writer.output = ImageIO.createImageOutputStream(File("result2.jpg"))
+    val param = writer.defaultWriteParam
+
+    val metadata = writer.getDefaultImageMetadata(ImageTypeSpecifier.createFromRenderedImage(collageImage), param)
+    val root = metadata.getAsTree(metadata.getNativeMetadataFormatName()) as IIOMetadataNode
+    val jfif = root.getElementsByTagName("app0JFIF").item(0) as IIOMetadataNode
+
+    jfif.setAttribute("resUnits", "1")
+    jfif.setAttribute("Xdensity", "300")
+    jfif.setAttribute("Ydensity", "300")
+
+    metadata.mergeTree(metadata.nativeMetadataFormatName, root)
+
+    writer.write(null, IIOImage(collageImage, null, metadata), param)
 }
 
 class CanvasFactory {
