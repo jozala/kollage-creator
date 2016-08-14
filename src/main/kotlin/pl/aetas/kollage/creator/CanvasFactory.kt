@@ -5,6 +5,8 @@ import org.slf4j.LoggerFactory
 import java.awt.Color
 import java.awt.image.BufferedImage
 import java.io.File
+import java.nio.file.Files
+import java.nio.file.Paths
 import java.util.*
 import javax.imageio.ImageIO
 
@@ -424,10 +426,13 @@ fun main(args: Array<String>) {
     val verticalImages: Collection<Image> = (1..50).map {MockImage(Size(10*18, 15*18), Color(255,255,255), "VERTICAL")}
     logger.debug("vertical image size: ${10*18} x ${15*18}")
 
-    val allImages = horizontalImages + verticalImages
+
+    val allFiles = Files.newDirectoryStream(Paths.get("/Users/mariusz/Desktop/daily_photos_all")).toList()
+    val allImages: List<PhotoImage> = allFiles.filter { it.fileName.toString().contains("jpg") }.map { PhotoImage(it) }
+//    val allImages = horizontalImages + verticalImages
     Collections.shuffle(allImages)
 
-    val canvasSize: Size = Size(70*13, 100*13)
+    val canvasSize: Size = Size(70*50, 100*50)
 
     val canvasCreator = CanvasFactory()
     val canvas = canvasCreator.create(allImages, canvasSize)
@@ -443,8 +448,10 @@ fun main(args: Array<String>) {
     imagesWithPosition.forEach {
         val (wrapper, position) = it
         wrapper.applyActions()
-        uniqueSizes.add(Size(wrapper.image!!.image.width, wrapper.image!!.image.height)) // log only
+//        uniqueSizes.add(Size(wrapper.image!!.image.width, wrapper.image!!.image.height)) // log only
+        wrapper.image!!.load()
         graphics.drawImage(wrapper.image?.image, position.x, position.y, null)
+        wrapper.image!!.unload()
     }
 
     logger.debug("UniqueSizes: $uniqueSizes")
