@@ -17,6 +17,7 @@ buildscript {
 }
 
 apply plugin: 'kotlin'
+apply plugin: 'groovy'
 apply plugin: 'spring-boot'
 
 jar {
@@ -34,4 +35,10 @@ dependencies {
   compile 'org.springframework.boot:spring-boot-starter-web'
   compile 'org.imgscalr:imgscalr-lib:4.2'
   compile 'ch.qos.logback:logback-core:1.1.3'
+  compile 'com.twelvemonkeys.imageio:imageio-tiff:3.2.1'
+
+  testCompile "org.codehaus.groovy:groovy-all:2.4.7"
+  testCompile "org.spockframework:spock-core:1.0-groovy-2.4"
+  testRuntime "cglib:cglib-nodep:3.1"          // allows mocking of classes (in addition to interfaces)
+  testRuntime "org.objenesis:objenesis:2.1"    // allows mocking of classes without default constructor (together with CGLIB
 }
