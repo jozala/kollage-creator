@@ -22,6 +22,16 @@ class ColumnTest extends Specification {
     content[2].second == new Position(100, 100)
     content[3].first.height() == 10
     content[3].second == new Position(100, 120)
+  }
 
+  def "should crop from last added image when last added image is regular"() {
+    given:
+    def column = new Column(100, 50)
+    column.fit(new ImageWrapper(new MockImage(50, 30)))
+    column.fit(new ImageWrapper(new MockImage(50, 70)))
+    when:
+    column.crop(10)
+    then:
+    column.contentWithPosition().last().component1().height() == 60
   }
 }

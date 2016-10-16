@@ -92,4 +92,52 @@ class ImageWrapperTest extends Specification {
     bufferedImage.width == 70
     bufferedImage.height == 70
   }
+
+  def "should change image height only when cropping image"() {
+    given:
+    ImageWrapper wrapper = new ImageWrapper(new MockImage(100, 100))
+    when:
+    wrapper.crop(22)
+    then:
+    wrapper.size() == new Size(100, 78)
+  }
+
+  def "should throw exception when cropping image with pixelsToCrop > height"() {
+    given:
+    ImageWrapper wrapper = new ImageWrapper(new MockImage(100, 100))
+    when:
+    wrapper.crop(101)
+    then:
+    thrown(AssertionError)
+  }
+
+  def "should apply all crop operation before returning buffered image when operations has been added"() {
+    given:
+    ImageWrapper wrapper = new ImageWrapper(new MockImage(100, 100))
+    wrapper.crop(10)
+    wrapper.crop(12)
+    wrapper.crop(28)
+    when:
+    def bufferedImage = wrapper.bufferedImage()
+    then:
+    bufferedImage.width == 100
+    bufferedImage.height == 100 - 10 - 12 - 28
+  }
+
+  def "should apply all operations (crop + downsize) before returning buffered image when operations has been added"() {
+    given:
+    ImageWrapper wrapper = new ImageWrapper(new MockImage(100, 100))
+    wrapper.crop(10)
+    wrapper.resize(100, 80)
+    wrapper.crop(10)
+    wrapper.resize(85, 60)
+
+    when:
+    def bufferedImage = wrapper.bufferedImage()
+    then:
+    bufferedImage.width == Math.ceil(100 * (8d/9) * (6/7)).intValue()
+    bufferedImage.height == 60
+  }
+
+
 }
