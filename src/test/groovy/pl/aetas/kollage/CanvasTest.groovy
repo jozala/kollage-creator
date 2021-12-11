@@ -1,5 +1,7 @@
 package pl.aetas.kollage
 
+import pl.aetas.kollage.Canvas
+import spock.lang.Ignore
 import spock.lang.Specification
 
 import java.awt.*
@@ -42,6 +44,7 @@ class CanvasTest extends Specification {
     canvas.columns[2].content.size() == 2
   }
 
+  @Ignore('There is 300px height added just for developing')
   def "should draw black buffered image of the size of canvas when no photo added"() {
     given:
     Canvas canvas = new Canvas([new Column(0, 10), new Column(10, 10), new Column(20, 10)], new Size(30, 100), 0F, 0)
@@ -197,6 +200,83 @@ class CanvasTest extends Specification {
     def image = canvas.columns[0].contentWithPosition()*.component1().last()
     image.width() == 20
     image.height() == 40
+  }
+
+  def "should align bottom line to height of canvas"() {
+    given:
+    def similarHeightMaxDifferencePx = 0
+    def extendingProbabilityZero = 0F
+    Canvas canvas = new Canvas([new Column(0, 10), new Column(10, 10), new Column(20, 10)], new Size(30, 19), extendingProbabilityZero, similarHeightMaxDifferencePx)
+    def images = [new MockImage(10, 10), new MockImage(10, 10),  new MockImage(10, 10),
+                  new MockImage(10, 15), new MockImage(10, 10), new MockImage(10, 12)]
+    images.forEach { canvas.addPhoto(it) }
+    when:
+    canvas.alignBottomLine()
+    then:
+    canvas.columns*.height().every { it == 19 }
+  }
+
+  def "should crop all photos on column when aliging bottom on column without any extended images"() {
+    given:
+    def similarHeightMaxDifferencePx = 0
+    def extendingProbabilityZero = 0F
+    Canvas canvas = new Canvas([new Column(0, 10), new Column(10, 10), new Column(20, 10)], new Size(30, 20), extendingProbabilityZero, similarHeightMaxDifferencePx)
+    def images = [new MockImage(10, 10), new MockImage(10, 10),  new MockImage(10, 10),
+                  new MockImage(10, 16), new MockImage(10, 10), new MockImage(10, 12)]
+    images.forEach { canvas.addPhoto(it) }
+    when:
+    canvas.alignBottomLine()
+    then:
+    canvas.columns[0].contentWithPosition()*.component1().first().height() == 7
+    canvas.columns[0].contentWithPosition()*.component1().last().height() == 13
+    canvas.columns[2].contentWithPosition()*.component1().first().height() == 9
+    canvas.columns[2].contentWithPosition()*.component1().last().height() == 11
+  }
+
+
+  /**
+   *  -----------------------
+   * |               |       |
+   * |       1       |   2   |
+   * |               |=======|
+   * |===============        |
+   * |   4   |               |
+   * |       |       3       |
+   * |======= ===============|
+   * |               |       |
+   * |       5       |   6   |
+   * |               |=======|
+   *  -----------------------
+   */
+  def "should adjust photos height on aligning bottom when one of the image is extended"() {
+    given:
+    def similarHeightMaxDifferencePx = 1
+    def extendingProbabilityOne = 1F
+    Canvas canvas = new Canvas([new Column(0, 10), new Column(10, 10), new Column(20, 10)], new Size(30, 92), extendingProbabilityOne, similarHeightMaxDifferencePx)
+    def images = [new MockImage(20, 40), new MockImage(20, 78),
+                  new MockImage(20, 39), new MockImage(20, 78),
+                  new MockImage(20, 40), new MockImage(20, 40) ]
+    images.forEach { canvas.addPhoto(it) }
+    when:
+    canvas.alignBottomLine()
+    then:
+    canvas.columns[1].content.collect { it.height() } == [27, 37, 28]
+    canvas.columns[2].content.collect { it.height() } == [37, 37, 18]
+  }
+
+  def "should adjust photos height on aligning bottom when some photo (3) is shorter than space between photos above (1) and below (5) it"() {
+    given:
+    def similarHeightMaxDifferencePx = 1
+    def extendingProbabilityOne = 1F
+    Canvas canvas = new Canvas([new Column(0, 10), new Column(10, 10), new Column(20, 10)], new Size(30, 92), extendingProbabilityOne, similarHeightMaxDifferencePx)
+    def images = [new MockImage(20, 40), new MockImage(20, 78),
+                  new MockImage(20, 39), new MockImage(20, 78),
+                  new MockImage(20, 40), new MockImage(20, 40) ]
+    images.forEach { canvas.addPhoto(it) }
+    when:
+    canvas.alignBottomLine()
+    then:
+    canvas.columns[0].content.collect { it.height() } == [27, 37, 28]
   }
 }
 

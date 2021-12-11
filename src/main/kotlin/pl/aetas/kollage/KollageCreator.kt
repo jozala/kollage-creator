@@ -28,12 +28,12 @@ class Canvas(val columns: List<Column>, val size: Size,
 
         if (similarHeightColumns(shortestColumn, columnOnTheLeft) && extendToNeighbouringColumnByProbability) {
             alignColumns(shortestColumn, columnOnTheLeft!!)
-            shortestColumn.addPlaceholder(imageWrapper)
-            columnOnTheLeft.fitExtended(imageWrapper)
+            val placeholder = shortestColumn.addPlaceholder(imageWrapper)
+            columnOnTheLeft.fitExtended(imageWrapper, placeholder)
         } else if (similarHeightColumns(shortestColumn, columnOnTheRight) && extendToNeighbouringColumnByProbability) {
             alignColumns(shortestColumn, columnOnTheRight!!)
-            shortestColumn.fitExtended(imageWrapper)
-            columnOnTheRight.addPlaceholder(imageWrapper)
+            val placeholder = columnOnTheRight.addPlaceholder(imageWrapper)
+            shortestColumn.fitExtended(imageWrapper, placeholder)
         } else {
             shortestColumn.fit(imageWrapper)
         }
@@ -61,16 +61,23 @@ class Canvas(val columns: List<Column>, val size: Size,
     private fun shortestColumn() = columns.minBy { it.height() }!!
 
     fun alignBottomLine() {
-        // TODO 3 continue LATER here - check previous TODOs first
-        throw UnsupportedOperationException("not implemented")
+        val targetHeight = size.height
+
+        for (all in (1..columns.size)) {
+            val shortestColumn = columns.filter { !it.hasBottomAligned }.minBy { it.height() }!!
+            shortestColumn.crop(shortestColumn.height() - targetHeight)
+
+            shortestColumn.bottomAligned()
+        }
     }
 
     fun draw(): BufferedImage {
-        val collageImage = BufferedImage(size.width, size.height, BufferedImage.TYPE_INT_RGB) // TODO - can add height (+300) to see bottom line clearly
+        val collageImage = BufferedImage(size.width, size.height + 300, BufferedImage.TYPE_INT_RGB) // TODO - can add height (+300) to see bottom line clearly
         val graphics = collageImage.createGraphics()
         columns.flatMap { it.contentWithPosition() }
                 .filter { it.first is ImageWrapper }
-                .forEach { pair ->
+                .forEachIndexed { i, pair ->
+                    LOGGER.debug("Working on drawing image $i")
                     val (wrapper, position) = pair
                     val image = wrapper as ImageWrapper
                     graphics.drawImage(image.bufferedImage(), position.x, position.y, null)
@@ -83,18 +90,29 @@ class Column(val x: Int, val width: Int) {
 
     private val content: MutableList<Wrapper> = mutableListOf()
 
+    var hasBottomAligned: Boolean = false
+        private set
+
+    fun bottomAligned() {
+        hasBottomAligned = true;
+        content.forEach { it.lock() }
+    }
+
     fun fit(wrapper: ImageWrapper) {
         wrapper.resize(width, wrapper.height())
         content.add(wrapper)
     }
 
-    fun fitExtended(wrapper: ImageWrapper) {
+    fun fitExtended(wrapper: ImageWrapper, placeholder: PlaceholderWrapper) {
         wrapper.resize(width * 2, wrapper.height())
+        wrapper.setLinkedWrapper(placeholder)
         content.add(wrapper)
     }
 
-    fun addPlaceholder(wrapper: ImageWrapper) {
-        content.add(PlaceholderWrapper(wrapper, width))
+    fun addPlaceholder(wrapper: ImageWrapper): PlaceholderWrapper {
+        val placeholder = PlaceholderWrapper(wrapper, width)
+        content.add(placeholder)
+        return placeholder
     }
 
     fun height() = content.sumBy { it.height() }
@@ -111,7 +129,11 @@ class Column(val x: Int, val width: Int) {
     }
 
     fun crop(pixelsToCrop: Int) {
-        content.last().crop(pixelsToCrop)
+        val notLockedWrappers = content.filterNot { it.isLocked() }
+        val pixelsToCropOnEachImage = pixelsToCrop / notLockedWrappers.size
+        val remainingPixels = pixelsToCrop % content.size
+        notLockedWrappers.forEach { it.crop(pixelsToCropOnEachImage) }
+        notLockedWrappers.last().crop(remainingPixels)
     }
 
 }
@@ -122,17 +144,30 @@ interface Wrapper {
     fun width(): Int = size().width
     fun height(): Int = size().height
     fun crop(pixelsToCrop: Int)
+    fun lock()
+    fun isLocked(): Boolean
 }
 
 class PlaceholderWrapper(private val linkedWrapper: ImageWrapper, private val width: Int): Wrapper {
+    private var locked: Boolean = false
+
     override fun size() = Size(width, linkedWrapper.size().height)
     override fun crop(pixelsToCrop: Int) { linkedWrapper.crop(pixelsToCrop) }
+    override fun lock() {
+        locked = true;
+        if (!linkedWrapper.isLocked()) {
+            linkedWrapper.lock()
+        }
+    }
+    override fun isLocked() = locked
 }
 
 class ImageWrapper(private val image: Image): Wrapper {
 
     private val originalSize: Size = image.size
     private val operations: MutableList<ImageOperation> = mutableListOf()
+    private var linkedWrapper: PlaceholderWrapper? = null
+    private var locked: Boolean = false
 
     override fun size(): Size {
         return operations.fold(originalSize, { size, operation -> operation.simulate(size) })
@@ -152,6 +187,17 @@ class ImageWrapper(private val image: Image): Wrapper {
         return bufferedImageAfterCrop;
     }
 
+    fun setLinkedWrapper(placeholder: PlaceholderWrapper) {
+        linkedWrapper = placeholder
+    }
+
+    override fun lock() {
+        locked = true
+        linkedWrapper?.lock()
+
+    }
+    override fun isLocked() = locked
+
     fun resize(targetWidth: Int, targetHeight: Int) {
         operations.add(DownsizeOperation(targetWidth, targetHeight))
     }
@@ -168,7 +214,7 @@ class ImageWrapper(private val image: Image): Wrapper {
 
     class DownsizeOperation(val targetMaxWidth: Int, val targetMaxHeight: Int): ImageOperation {
 
-        val LOGGER = LoggerFactory.getLogger(DownsizeOperation::class.java)
+        val LOGGER = LoggerFactory.getLogger(DownsizeOperation::class.java)!!
 
         override fun apply(bufferedImage: BufferedImage): BufferedImage {
             val (width, height) = simulate(Size(bufferedImage.width, bufferedImage.height))
@@ -242,13 +288,9 @@ fun main(args: Array<String>) {
         canvas.addPhoto(photo)
     }
 
-    try {
-        LOGGER.info("Starting process of aligning bottom line...")
-        canvas.alignBottomLine()
-    } catch (e: Exception) {
-        // nothing :)))
-        // TODO change this
-    }
+    LOGGER.info("Starting process of aligning bottom line...")
+    canvas.alignBottomLine()
+
     LOGGER.info("Creating collage image from canvas...")
     val collage: BufferedImage = canvas.draw()
 

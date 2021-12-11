@@ -138,9 +138,9 @@ class Canvas(columnsNumber: Int, val size: Size) {
 
 
         columns.forEach { column ->
-            val overallDiff = column.height() - finalHeight // 1050 - 1000 = 50 //    1030 - 1000 = 30
-            val averageDiff: Int = overallDiff / column.content.filter { !it.locked }.size // 50 / 12 = 4      30 / 8 = 3
-            val leftoverDiff: Int = overallDiff % column.content.filter { !it.locked }.size // 50 % 12 = 2     30 % 8 = 6
+//            val overallDiff = column.height() - finalHeight // 1050 - 1000 = 50 //    1030 - 1000 = 30
+//            val averageDiff: Int = overallDiff / column.content.filter { !it.locked }.size // 50 / 12 = 4      30 / 8 = 3
+//            val leftoverDiff: Int = overallDiff % column.content.filter { !it.locked }.size // 50 % 12 = 2     30 % 8 = 6
 
             val colIndex = columns.indexOf(column)
             val groups: MutableList<Group> = arrayListOf()
@@ -152,9 +152,9 @@ class Canvas(columnsNumber: Int, val size: Size) {
                     groups.last().wrappers.add(wrapper)
                 } else {
                     var thisLockedY = 0
-                    if (colIndex > 0 && columns[colIndex-1].content.contains(wrapper.linkedWrapper)) {
+                    if (colIndex > 0 && columns[colIndex-1].content.contains(wrapper.linkedWrapper)) { // linked on the left
                         thisLockedY = columns[colIndex-1].wrapperY(wrapper.linkedWrapper!!)
-                    } else if (colIndex < columns.size-1 && columns[colIndex+1].content.contains(wrapper.linkedWrapper)) {
+                    } else if (colIndex < columns.size-1 && columns[colIndex+1].content.contains(wrapper.linkedWrapper)) { // linked on the right
                         thisLockedY = columns[colIndex+1].wrapperY(wrapper.linkedWrapper!!)
                     } else {
                         throw IllegalStateException("None of the neighbours contain wrapper")
